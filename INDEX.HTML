@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Controle de Produtos Bloqueados</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+
+:root{
+    --bg:#111827;
+    --card:#1F2937;
+    --card2:#374151;
+    --yellow:#F2C811;
+    --text:#F9FAFB;
+    --gray:#9CA3AF;
+}
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Segoe UI,sans-serif;
+}
+
+body{
+    background:var(--bg);
+    color:var(--text);
+}
+
+.header{
+    background:#0B1220;
+    padding:20px 40px;
+    border-bottom:3px solid var(--yellow);
+}
+
+.header h1{
+    color:var(--yellow);
+}
+
+.container{
+    width:95%;
+    max-width:1600px;
+    margin:auto;
+    padding:25px;
+}
+
+.cards{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+    gap:20px;
+    margin-bottom:25px;
+}
+
+.card{
+    background:var(--card);
+    padding:25px;
+    border-radius:15px;
+    box-shadow:0 4px 15px rgba(0,0,0,.3);
+}
+
+.card h3{
+    color:var(--gray);
+    margin-bottom:10px;
+}
+
+.card span{
+    font-size:34px;
+    font-weight:bold;
+    color:var(--yellow);
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:400px 1fr;
+    gap:20px;
+    margin-bottom:25px;
+}
+
+.panel{
+    background:var(--card);
+    padding:20px;
+    border-radius:15px;
+}
+
+.panel h2{
+    margin-bottom:15px;
+    color:var(--yellow);
+}
+
+form{
+    display:grid;
+    gap:10px;
+}
+
+input, textarea, select{
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:#111827;
+    color:white;
+}
+
+textarea{
+    resize:vertical;
+    min-height:80px;
+}
+
+button{
+    background:var(--yellow);
+    border:none;
+    padding:12px;
+    border-radius:10px;
+    cursor:pointer;
+    font-weight:bold;
+}
+
+button:hover{
+    opacity:.9;
+}
+
+.toolbar{
+    display:flex;
+    gap:10px;
+    margin-bottom:15px;
+}
+
+.toolbar input{
+    flex:1;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+
+th{
+    background:var(--yellow);
+    color:black;
+}
+
+th,td{
+    padding:12px;
+    border:1px solid #374151;
+}
+
+tr:nth-child(even){
+    background:#263241;
+}
+
+.action{
+    padding:6px 10px;
+    margin-right:5px;
+    border:none;
+    border-radius:6px;
+    cursor:pointer;
+}
+
+.edit{
+    background:#3B82F6;
+    color:white;
+}
+
+.delete{
+    background:#EF4444;
+    color:white;
+}
+
+@media(max-width:900px){
+
+.grid{
+    grid-template-columns:1fr;
+}
+
+}
+
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>📦 Controle de Produtos Bloqueados</h1>
+</div>
+
+<div class="container">
+
+<div class="cards">
+
+<div class="card">
+<h3>Total de Bloqueios</h3>
+<span id="total">0</span>
+</div>
+
+<div class="card">
+<h3>Com Estoque</h3>
+<span id="comEstoque">0</span>
+</div>
+
+<div class="card">
+<h3>Sem Estoque</h3>
+<span id="semEstoque">0</span>
+</div>
+
+</div>
+
+<div class="grid">
+
+<div class="panel">
+
+<h2>Novo Registro</h2>
+
+<form id="form">
+
+<input type="date" id="data" required>
+
+<input type="text" id="produto"
+placeholder="Produto" required>
+
+<input type="text" id="lote"
+placeholder="Lote" required>
+
+<textarea id="descricao"
+placeholder="Descrição"></textarea>
+
+<textarea id="observacao"
+placeholder="Observação"></textarea>
+
+<select id="estoque">
+<option>Sim</option>
+<option>Não</option>
+</select>
+
+<button type="submit">
+Salvar Registro
+</button>
+
+</form>
+
+</div>
+
+<div class="panel">
+
+<h2>Bloqueios por Mês</h2>
+
+<canvas id="grafico"></canvas>
+
+</div>
+
+</div>
+
+<div class="panel">
+
+<div class="toolbar">
+
+<input type="text"
+id="pesquisa"
+placeholder="Pesquisar por Produto ou Lote">
+
+<button onclick="exportarExcel()">
+Exportar Excel
+</button>
+
+</div>
+
+<table>
+
+<thead>
+<tr>
+<th>Data</th>
+<th>Produto</th>
+<th>Lote</th>
+<th>Descrição</th>
+<th>Observação</th>
+<th>Estoque</th>
+<th>Ações</th>
+</tr>
+</thead>
+
+<tbody id="tabela"></tbody>
+
+</table>
+
+</div>
+
+</div>
+
+<script>
+
+let registros =
+JSON.parse(localStorage.getItem("bloqueios")) || [];
+
+let editando = -1;
+
+const form = document.getElementById("form");
+
+form.addEventListener("submit",function(e){
+
+e.preventDefault();
+
+const registro = {
+
+data:data.value,
+produto:produto.value,
+lote:lote.value,
+descricao:descricao.value,
+observacao:observacao.value,
+estoque:estoque.value
+
+};
+
+if(editando >= 0){
+
+registros[editando] = registro;
+editando = -1;
+
+}else{
+
+registros.push(registro);
+
+}
+
+salvar();
+
+form.reset();
+
+});
+
+function salvar(){
+
+localStorage.setItem(
+"bloqueios",
+JSON.stringify(registros)
+);
+
+renderizarTabela();
+atualizarDashboard();
+gerarGrafico();
+
+}
+
+function renderizarTabela(){
+
+const tbody =
+document.getElementById("tabela");
+
+tbody.innerHTML = "";
+
+registros.forEach((r,i)=>{
+
+tbody.innerHTML += `
+<tr>
+<td>${r.data}</td>
+<td>${r.produto}</td>
+<td>${r.lote}</td>
+<td>${r.descricao}</td>
+<td>${r.observacao}</td>
+<td>${r.estoque}</td>
+<td>
+<button class="action edit"
+onclick="editar(${i})">
+Editar
+</button>
+
+<button class="action delete"
+onclick="excluir(${i})">
+Excluir
+</button>
+</td>
+</tr>
+`;
+
+});
+
+}
+
+function editar(i){
+
+const r = registros[i];
+
+data.value = r.data;
+produto.value = r.produto;
+lote.value = r.lote;
+descricao.value = r.descricao;
+observacao.value = r.observacao;
+estoque.value = r.estoque;
+
+editando = i;
+
+}
+
+function excluir(i){
+
+if(confirm("Excluir registro?")){
+
+registros.splice(i,1);
+salvar();
+
+}
+
+}
+
+function atualizarDashboard(){
+
+total.innerText =
+registros.length;
+
+comEstoque.innerText =
+registros.filter(x=>x.estoque==="Sim").length;
+
+semEstoque.innerText =
+registros.filter(x=>x.estoque==="Não").length;
+
+}
+
+let chart;
+
+function gerarGrafico(){
+
+const meses = {};
+
+registros.forEach(r=>{
+
+if(!r.data) return;
+
+const mes = new Date(r.data)
+.toLocaleString('pt-BR',{
+month:'short'
+});
+
+meses[mes] = (meses[mes]||0)+1;
+
+});
+
+if(chart) chart.destroy();
+
+chart = new Chart(
+document.getElementById("grafico"),
+{
+type:"bar",
+data:{
+labels:Object.keys(meses),
+datasets:[{
+label:"Bloqueios",
+data:Object.values(meses),
+backgroundColor:"#F2C811"
+}]
+},
+options:{
+plugins:{
+legend:{
+labels:{color:"white"}
+}
+},
+scales:{
+x:{
+ticks:{color:"white"}
+},
+y:{
+ticks:{color:"white"}
+}
+}
+}
+});
+
+}
+
+document
+.getElementById("pesquisa")
+.addEventListener("keyup",function(){
+
+const termo =
+this.value.toLowerCase();
+
+document
+.querySelectorAll("#tabela tr")
+.forEach(linha=>{
+
+linha.style.display =
+linha.innerText.toLowerCase()
+.includes(termo)
+? ""
+: "none";
+
+});
+
+});
+
+function exportarExcel(){
+
+const ws =
+XLSX.utils.json_to_sheet(registros);
+
+const wb =
+XLSX.utils.book_new();
+
+XLSX.utils.book_append_sheet(
+wb,
+ws,
+"Bloqueios"
+);
+
+XLSX.writeFile(
+wb,
+"Produtos_Bloqueados.xlsx"
+);
+
+}
+
+renderizarTabela();
+atualizarDashboard();
+gerarGrafico();
+
+</script>
+
+</body>
+</html>
